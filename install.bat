@@ -20,23 +20,24 @@ for /f "tokens=2" %%i in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%i"
 echo [OK] Python %PYTHON_VERSION% installed
 echo.
 
-:: Create virtual environment
+:: Create virtual environment on E drive
 echo [2/6] Creating virtual environment...
-if not exist "venv" (
-    python -m venv venv
+if not exist "E:\DevTools" mkdir "E:\DevTools"
+if not exist "E:\DevTools\venv" (
+    python -m venv "E:\DevTools\venv"
     if errorlevel 1 (
         echo ERROR: Failed to create virtual environment
         pause
         exit /b 1
     )
-    echo [OK] Virtual environment created
+    echo [OK] Virtual environment created at E:\DevTools\venv
 ) else (
-    echo [OK] Virtual environment already exists
+    echo [OK] Virtual environment already exists at E:\DevTools\venv
 )
 echo.
 
 :: Activate virtual environment
-call venv\Scripts\activate.bat
+call "E:\DevTools\venv\Scripts\activate.bat"
 
 :: Upgrade pip
 echo [3/6] Upgrading pip...
@@ -92,39 +93,7 @@ echo Creating tool directories...
 if not exist "E:\DevTools" mkdir "E:\DevTools"
 if not exist "E:\DevTools\models" mkdir "E:\DevTools\models"
 if not exist "E:\DevTools\models\rmvpe" mkdir "E:\DevTools\models\rmvpe"
-if not exist "E:\DevTools\ffmpeg" mkdir "E:\DevTools\ffmpeg"
 echo [OK] Directories created
-echo.
-
-:: Download FFmpeg
-echo Downloading FFmpeg...
-if not exist "E:\DevTools\ffmpeg\bin\ffmpeg.exe" (
-    echo Downloading FFmpeg (about 80MB)...
-
-    powershell -Command "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile 'E:\DevTools\ffmpeg\ffmpeg.zip'"
-
-    if errorlevel 1 (
-        echo FFmpeg download failed. Please download manually:
-        echo URL: https://www.gyan.dev/ffmpeg/builds/
-        echo Extract to: E:\DevTools\ffmpeg
-    ) else (
-        echo Extracting FFmpeg...
-        powershell -Command "Expand-Archive -Path 'E:\DevTools\ffmpeg\ffmpeg.zip' -DestinationPath 'E:\DevTools\ffmpeg' -Force"
-
-        for /d %%i in ("E:\DevTools\ffmpeg\ffmpeg-*-essentials_build") do (
-            xcopy "%%i\bin\*" "E:\DevTools\ffmpeg\bin\" /E /I /Y >nul
-        )
-
-        del "E:\DevTools\ffmpeg\ffmpeg.zip" >nul 2>&1
-        for /d %%i in ("E:\DevTools\ffmpeg\ffmpeg-*-essentials_build") do (
-            rmdir /s /q "%%i" >nul 2>&1
-        )
-
-        echo [OK] FFmpeg installed
-    )
-) else (
-    echo [OK] FFmpeg already exists
-)
 echo.
 
 :: Download RMVPE model
@@ -153,22 +122,11 @@ echo Creating start script...
 (
 echo @echo off
 echo cd /d "%%~dp0"
-echo call venv\Scripts\activate.bat
+echo call E:\DevTools\venv\Scripts\activate.bat
 echo python main.py
 echo pause
 ) > start.bat
 echo [OK] Start script created
-echo.
-
-:: Create desktop shortcut
-echo Creating desktop shortcut...
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Vocal2MIDI.lnk'); $Shortcut.TargetPath = '%~dp0start.bat'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.Description = 'Vocal2MIDI - Vocal to MIDI Converter'; $Shortcut.Save()"
-
-if errorlevel 1 (
-    echo Failed to create desktop shortcut
-) else (
-    echo [OK] Desktop shortcut created
-)
 echo.
 
 :: Installation complete
@@ -178,10 +136,9 @@ echo ========================================
 echo.
 echo How to use:
 echo   1. Double-click start.bat to launch
-echo   2. Or double-click the desktop shortcut
 echo.
-echo Project directory: %~dp0
-echo Tools directory: E:\DevTools
+echo Virtual environment: E:\DevTools\venv
+echo Models: E:\DevTools\models
 echo.
 echo Press any key to exit...
 pause >nul
