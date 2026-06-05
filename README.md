@@ -225,7 +225,7 @@ pyinstaller --onefile --windowed --name Vocal2MIDI main.py
 
 ## 📝 更新日志
 
-### v1.0.0 (2024-01-01)
+### v1.0.0 (2026-06-05)
 - 🎉 初始版本发布
 - ✨ RMVPE音高检测引擎
 - ✨ 颤音检测和保留
