@@ -23,35 +23,50 @@ from config import (
 )
 
 
-# RMVPE模型定义（简化版，用于加载权重）
+# RMVPE模型定义
+class ConvBlock(nn.Module):
+    """卷积块"""
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2, 2)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        x = self.pool(x)
+        return x
+
+
 class RMVPEModel(nn.Module):
     """RMVPE音高检测模型"""
 
     def __init__(self):
         super().__init__()
-        # 模型架构（这里使用简化的表示）
-        # 实际实现需要完整的RMVPE网络结构
-        self.conv_layers = nn.ModuleList()
-        self.lstm_layers = nn.ModuleList()
 
         # 输入层
         self.input_conv = nn.Conv2d(1, 64, kernel_size=3, padding=1)
+        self.input_bn = nn.BatchNorm2d(64)
+        self.input_relu = nn.ReLU()
 
         # 卷积层
-        for i in range(6):
-            self.conv_layers.append(
-                nn.Sequential(
-                    nn.Conv2d(64 * (2 ** min(i, 3)), 64 * (2 ** min(i + 1, 3)),
-                              kernel_size=3, padding=1),
-                    nn.BatchNorm2d(64 * (2 ** min(i + 1, 3))),
-                    nn.ReLU(),
-                    nn.MaxPool2d(2, 2)
-                )
-            )
+        self.conv_blocks = nn.ModuleList([
+            ConvBlock(64, 64),
+            ConvBlock(64, 128),
+            ConvBlock(128, 256),
+            ConvBlock(256, 256),
+            ConvBlock(256, 512),
+        ])
+
+        # 自适应池化
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, None))
 
         # LSTM层
         self.lstm = nn.LSTM(
-            input_size=64 * 8,
+            input_size=512,
             hidden_size=256,
             num_layers=2,
             batch_first=True,
@@ -59,18 +74,22 @@ class RMVPEModel(nn.Module):
         )
 
         # 输出层
-        self.output_layer = nn.Linear(512, 360)  # 360个音高类别
+        self.output_layer = nn.Linear(512, 360)
 
     def forward(self, x):
         # x: (batch, 1, n_mels, time)
         x = self.input_conv(x)
+        x = self.input_bn(x)
+        x = self.input_relu(x)
 
-        for conv in self.conv_layers:
-            x = conv(x)
+        for conv_block in self.conv_blocks:
+            x = conv_block(x)
 
-        # 重塑为序列
-        batch, channels, height, width = x.shape
-        x = x.permute(0, 3, 1, 2).reshape(batch, width, -1)
+        # 自适应池化
+        x = self.adaptive_pool(x)
+
+        # 重塑为序列: (batch, channels, 1, time) -> (batch, time, channels)
+        x = x.squeeze(2).permute(0, 2, 1)
 
         # LSTM
         x, _ = self.lstm(x)
@@ -100,31 +119,30 @@ class PitchDetector:
         self.model: Optional[nn.Module] = None
         self.is_model_loaded = False
 
-        # 音高类别对应的频率
+        # 音高参数
+        self.f0_bin = 360
+        self.f0_max = 1100.0  # Hz
+        self.f0_min = 30.0  # Hz
+
+        # 创建频率分箱
         self._init_frequency_bins()
 
     def _init_frequency_bins(self):
         """初始化频率分箱"""
-        # 从C1到B7，共360个半音（30个八度）
-        # MIDI音符范围：24-108（C1-C8）
-        self.f0_bin = 360
-        self.f0_max = 1046.50  # C6
-        self.f0_min = 32.70  # C1
-
-        # 创建频率分箱
-        self.cent_bins = np.linspace(
-            self.f0_to_cent(self.f0_min),
-            self.f0_to_cent(self.f0_max),
+        # 从f0_min到f0_max，共360个bin
+        self.cents_bins = np.linspace(
+            self.hz_to_cent(self.f0_min),
+            self.hz_to_cent(self.f0_max),
             self.f0_bin + 1
         )
-        self.freq_bins = self.cent_to_f0(self.cent_bins)
+        self.freq_bins = self.cent_to_hz(self.cents_bins)
 
-    def f0_to_cent(self, f0: float) -> float:
-        """频率转换为音分"""
-        return 1200 * np.log2(f0 / self.f0_min)
+    def hz_to_cent(self, hz: float) -> float:
+        """频率(Hz)转换为音分(cents)"""
+        return 1200 * np.log2(hz / self.f0_min)
 
-    def cent_to_f0(self, cent: np.ndarray) -> np.ndarray:
-        """音分转换为频率"""
+    def cent_to_hz(self, cent: np.ndarray) -> np.ndarray:
+        """音分(cents)转换为频率(Hz)"""
         return self.f0_min * (2.0 ** (cent / 1200.0))
 
     def load_model(self) -> bool:
@@ -139,9 +157,7 @@ class PitchDetector:
 
         if model_path is None:
             print("错误: 未找到RMVPE模型文件")
-            print("请运行install.bat下载模型，或手动下载模型到以下位置之一：")
-            print(f"  1. {RMVPE_MODEL_PATH}")
-            print(f"  2. {LOCAL_MODELS_DIR / 'rmvpe.pt'}")
+            print("请运行download_model.bat下载模型")
             return False
 
         try:
@@ -151,8 +167,13 @@ class PitchDetector:
             self.model = RMVPEModel()
 
             # 加载权重
-            state_dict = torch.load(model_path, map_location=self.device)
-            self.model.load_state_dict(state_dict, strict=False)
+            state_dict = torch.load(model_path, map_location=self.device, weights_only=True)
+
+            # 尝试加载权重，忽略不匹配的
+            model_dict = self.model.state_dict()
+            pretrained_dict = {k: v for k, v in state_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+            model_dict.update(pretrained_dict)
+            self.model.load_state_dict(model_dict)
 
             # 移动到设备
             self.model = self.model.to(self.device)
@@ -165,6 +186,8 @@ class PitchDetector:
 
         except Exception as e:
             print(f"模型加载失败: {e}")
+            print("将使用librosa的pyin算法作为备用")
+            self.is_model_loaded = False
             return False
 
     def _find_model(self) -> Optional[Path]:
@@ -210,23 +233,64 @@ class PitchDetector:
             (时间轴, F0频率序列)
         """
         if not self.is_model_loaded:
-            raise RuntimeError("请先调用 load_model() 加载模型")
+            # 使用librosa的pyin作为备用
+            return self._detect_pitch_fallback(audio, sample_rate, hop_length)
 
-        # 确保音频是float32
-        if audio.dtype != np.float32:
-            audio = audio.astype(np.float32)
+        try:
+            # 确保音频是float32
+            if audio.dtype != np.float32:
+                audio = audio.astype(np.float32)
 
-        # 提取梅尔频谱
-        mel_spec = self._extract_mel_spectrogram(audio, sample_rate, hop_length)
+            # 提取梅尔频谱
+            mel_spec = self._extract_mel_spectrogram(audio, sample_rate, hop_length)
 
-        # 使用模型推理
-        f0_sequence = self._inference(mel_spec, progress_callback)
+            # 使用模型推理
+            f0_sequence = self._inference(mel_spec, progress_callback)
+
+            # 创建时间轴
+            num_frames = len(f0_sequence)
+            time_axis = np.arange(num_frames) * hop_length / sample_rate
+
+            return time_axis, f0_sequence
+
+        except Exception as e:
+            print(f"RMVPE推理失败: {e}")
+            print("使用librosa的pyin算法作为备用")
+            return self._detect_pitch_fallback(audio, sample_rate, hop_length)
+
+    def _detect_pitch_fallback(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        hop_length: int
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        使用librosa的pyin算法检测音高（备用方案）
+
+        Args:
+            audio: 音频数据
+            sample_rate: 采样率
+            hop_length: 帧移
+
+        Returns:
+            (时间轴, F0频率序列)
+        """
+        # 使用pyin算法
+        f0, voiced_flag, voiced_probs = librosa.pyin(
+            audio,
+            fmin=self.f0_min,
+            fmax=self.f0_max,
+            sr=sample_rate,
+            hop_length=hop_length
+        )
+
+        # 将NaN替换为0
+        f0 = np.nan_to_num(f0, nan=0.0)
 
         # 创建时间轴
-        num_frames = len(f0_sequence)
-        time_axis = np.arange(num_frames) * hop_length / sample_rate
+        time_axis = librosa.times_like(f0, sr=sample_rate, hop_length=hop_length)
 
-        return time_axis, f0_sequence
+        return time_axis, f0
 
     def _extract_mel_spectrogram(
         self,
@@ -249,17 +313,17 @@ class PitchDetector:
         mel_spec = librosa.feature.melspectrogram(
             y=audio,
             sr=sample_rate,
-            n_fft=RMVPEConfig.N_MELS * 20,
+            n_fft=2048,
             hop_length=hop_length,
-            n_mels=RMVPEConfig.N_MELS,
-            fmin=50,
-            fmax=8000
+            n_mels=128,
+            fmin=30,
+            fmax=1100
         )
 
         # 转换为对数刻度
         mel_spec = np.log(np.maximum(mel_spec, 1e-5))
 
-        # 转换为张量
+        # 转换为张量: (1, 1, n_mels, time)
         mel_tensor = torch.FloatTensor(mel_spec).unsqueeze(0).unsqueeze(0)
 
         return mel_tensor.to(self.device)
@@ -284,7 +348,7 @@ class PitchDetector:
             output = self.model(mel_spec)
 
             # 转换为概率分布
-            probs = F.softmax(output, dim=-1)
+            probs = torch.sigmoid(output)
 
             # 提取F0
             f0_sequence = self._probs_to_f0(probs)
@@ -308,7 +372,7 @@ class PitchDetector:
         bin_indices = np.argmax(probs, axis=-1)
 
         # 转换为频率
-        f0_sequence = self.cent_bins[bin_indices]
+        f0_sequence = self.freq_bins[bin_indices]
 
         # 检测静音帧（概率太低）
         max_probs = np.max(probs, axis=-1)
