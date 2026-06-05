@@ -52,29 +52,18 @@
 
 ## 🚀 快速开始
 
-### 方式一：下载Release（推荐）
-
-1. 前往 [Releases](https://github.com/StarryFirefly-Armillary/Vocal2MIDI/releases) 页面
-2. 下载最新的 `Vocal2MIDI-vx.x.x.zip`
-3. 解压到任意位置
-4. 运行 `Vocal2MIDI.exe`
-
-> **注意**：首次运行需要下载RMVPE模型（约100MB），请确保网络畅通。
-
-### 方式二：从源码运行
-
-#### 系统要求
+### 系统要求
 
 - Windows 10/11
 - Python 3.8+
 - NVIDIA显卡（推荐，支持CUDA加速）
 
-#### 安装步骤
+### 安装步骤
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/StarryFirefly-Armillary/Vocal2MIDI.git
-cd Vocal2MIDI
+# 1. 克隆仓库或下载ZIP
+git clone https://github.com/StarryFirefly-Armillary/vocal2midi.git
+cd vocal2midi
 
 # 2. 运行安装脚本
 双击 install.bat
@@ -82,6 +71,8 @@ cd Vocal2MIDI
 # 3. 启动程序
 双击 start.bat
 ```
+
+> **注意**：首次运行会自动下载RMVPE模型（约100MB），请确保网络畅通。
 
 ---
 
