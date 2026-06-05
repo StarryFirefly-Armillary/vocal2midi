@@ -39,12 +39,16 @@ echo [5/5] Downloading RMVPE model...
 if not exist "E:\DevTools\models\rmvpe\rmvpe.pt" (
     echo Downloading RMVPE model (about 100MB)...
     echo This may take a few minutes...
+    echo.
 
-    powershell -Command "Invoke-WebRequest -Uri 'https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt' -OutFile 'E:\DevTools\models\rmvpe\rmvpe.pt'"
+    :: Try HuggingFace first
+    echo Trying HuggingFace...
+    curl -L -o "E:\DevTools\models\rmvpe\rmvpe.pt" "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt"
 
     if errorlevel 1 (
-        echo Download from HuggingFace failed, trying GitHub...
-        powershell -Command "Invoke-WebRequest -Uri 'https://github.com/yxlllc/RMVPE/releases/download/v1.0/rmvpe.pt' -OutFile 'E:\DevTools\models\rmvpe\rmvpe.pt'"
+        echo.
+        echo HuggingFace failed, trying GitHub...
+        curl -L -o "E:\DevTools\models\rmvpe\rmvpe.pt" "https://github.com/yxlllc/RMVPE/releases/download/v1.0/rmvpe.pt"
     )
 
     if errorlevel 1 (
@@ -54,6 +58,7 @@ if not exist "E:\DevTools\models\rmvpe\rmvpe.pt" (
         echo   https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/rmvpe.pt
         echo   Save to: E:\DevTools\models\rmvpe\rmvpe.pt
     ) else (
+        echo.
         echo [OK] RMVPE model downloaded
     )
 ) else (
