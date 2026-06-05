@@ -188,7 +188,7 @@ A: 请确保：
 
 A: 
 1. 确保已安装NVIDIA显卡驱动
-2. 运行 `fix_gpu.bat` 重新安装CUDA版PyTorch
+2. 运行 `install.bat` 安装支持CUDA的PyTorch
 3. 重启程序
 
 ---
