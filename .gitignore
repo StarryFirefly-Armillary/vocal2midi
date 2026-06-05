@@ -57,6 +57,8 @@ E:/
 *.bat
 !start.bat
 !install.bat
+!install_deps.bat
+!download_model.bat
 
 # Temporary files
 *.tmp
